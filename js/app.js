@@ -276,7 +276,7 @@ function renderTable() {
       <td>${l.bairro}</td>
       <td><span class="badge ${zonaBadge}">${l.zona}</span></td>
       <td><span class="mr-pill" style="background:${meta.cor||'#888'};">${l.micro_regiao}</span></td>
-      <td style="font-size:12px;">${l.porte}</td>
+      <td>${porteBadge(l.porte)}</td>
       <td style="text-align:center;font-weight:600;">${l.contratos_geral}</td>
       <td style="text-align:right;">${fmtBRL(l.volume_geral)}</td>
       <td>
@@ -519,6 +519,28 @@ async function importarSeed() {
 // ══════════════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════════════
+function porteBadge(porte) {
+  if (!porte) return '<span style="color:#aaa;font-size:11px;">—</span>';
+  const p = porte.trim().toUpperCase();
+  let bg, color, label;
+  if (p.startsWith('F')) {
+    bg = '#1565C0'; color = '#fff'; label = porte; // F. > 30 — azul escuro
+  } else if (p.startsWith('E')) {
+    bg = '#6cd1f0'; color = '#fff'; label = porte; // E. 21-30 — azul claro
+  } else if (p.startsWith('D')) {
+    bg = '#26A69A'; color = '#fff'; label = porte; // D. 11-20 — verde água
+  } else if (p.startsWith('C')) {
+    bg = '#66BB6A'; color = '#fff'; label = porte; // C. 6-10 — verde
+  } else if (p.startsWith('B')) {
+    bg = '#FFA726'; color = '#fff'; label = porte; // B. 2-5 — laranja
+  } else if (p.startsWith('A')) {
+    bg = '#EF5350'; color = '#fff'; label = porte; // A. 1 — vermelho
+  } else {
+    bg = '#E0E0E0'; color = '#555'; label = porte;
+  }
+  return `<span style="display:inline-block;background:${bg};color:${color};font-size:10px;font-weight:600;padding:3px 7px;border-radius:6px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis;" title="${porte}">${label}</span>`;
+}
+
 function fmtBRL(n) {
   if (!n) return 'R$ 0';
   return 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits:0, maximumFractionDigits:0 });
