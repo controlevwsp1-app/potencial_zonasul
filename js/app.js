@@ -2,11 +2,10 @@
 // app.js — CARBANK · Carteira SP
 // ============================================================
 
-// ── CONFIG (preenchida pelo usuário no config.js) ──
-const CFG = window.CARBANK_CONFIG || {};
-const SUPA_URL = CFG.supabaseUrl || '';
-const SUPA_KEY = CFG.supabaseKey || '';
-
+window.CARBANK_CONFIG = {
+  supabaseUrl: 'https://yydctmbavkttcvahntco.supabase.co',
+  supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5ZGN0bWJhdmt0dGN2YWhudGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwNTQ5NjcsImV4cCI6MjA4OTYzMDk2N30.BBmlIOvhC8gN01bMcAmfyMqhkqYWRDeG18aYBacM6kM',
+};
 // ── MR META ──
 const MR_META = {
   'MR-C1': { nome:'Centro · Bela Vista · Higienópolis',              zona:'Centro',     cor:'#BA7517', bg:'#FAEEDA', txt:'#633806', lat:-23.553, lng:-46.645 },
@@ -50,7 +49,6 @@ async function loadLojas() {
     renderAll();
   } catch(e) {
     showToast('Erro ao carregar dados: ' + e.message, 'error');
-    // fallback: load seed
     await loadSeed();
   } finally {
     showLoading(false);
@@ -76,6 +74,16 @@ function renderAll() {
   document.getElementById('badge-total').textContent = active.length + ' lojas ativas';
   renderDashboard();
   applyTableFilters();
+  populateColabFilter();
+}
+
+function populateColabFilter() {
+  const sel = document.getElementById('f-colab');
+  if (!sel) return;
+  const colabs = [...new Set(allLojas.map(l=>l.colaboradora).filter(Boolean))].sort();
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Todas colaboradoras</option><option value="__sem__">Sem colaboradora</option>' +
+    colabs.map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -169,9 +177,9 @@ function renderColabCards(active) {
     return;
   }
 
+  const colors = ['#1D9E75','#185FA5','#BA7517','#D85A30','#534AB7','#0F6E56','#0C447C'];
   const sorted = Object.entries(colabMap).sort((a,b) => b[1].volume - a[1].volume);
   const maxVol = sorted[0]?.[1].volume || 1;
-  const colors = ['#1D9E75','#185FA5','#BA7517','#D85A30','#534AB7','#0F6E56','#0C447C'];
 
   sorted.forEach(([nome, d], i) => {
     const cor = colors[i % colors.length];
@@ -418,11 +426,9 @@ function refreshMapa() {
     return true;
   });
 
-  // Plot MR bubble circles
   Object.entries(MR_META).forEach(([mr, meta]) => {
     const lojas = toPlot.filter(l => l.micro_regiao === mr);
     if (lojas.length === 0) return;
-    const maxL = Math.max(...Object.values(MR_META).map(m2 => active.filter(l=>l.micro_regiao===Object.keys(MR_META).find(k=>MR_META[k]===m2)).length));
     const radius = 20 + (lojas.length / Math.max(47,1)) * 30;
 
     const circle = L.circleMarker([meta.lat, meta.lng], {
@@ -431,12 +437,10 @@ function refreshMapa() {
     mapMarkers.push(circle);
   });
 
-  // Plot individual stores as tiny dots
   toPlot.forEach(l => {
     const meta = MR_META[l.micro_regiao] || {};
     const cor = l.colaboradora ? (colabColors[l.colaboradora]||meta.cor) : meta.cor;
 
-    // Scatter dots around MR center
     const jLat = meta.lat + (Math.random()-.5)*0.06;
     const jLng = meta.lng + (Math.random()-.5)*0.07;
 
@@ -468,7 +472,6 @@ function refreshMapa() {
     mapMarkers.push(dot);
   });
 
-  // Legend
   const legEl = document.getElementById('mapa-legend');
   if (legEl) {
     legEl.innerHTML = allColabs.length > 0
@@ -476,7 +479,6 @@ function refreshMapa() {
       : Object.entries(MR_META).map(([mr,m])=>`<span style="display:inline-flex;align-items:center;gap:5px;background:${m.bg};color:${m.txt};font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;"><span style="width:8px;height:8px;border-radius:50%;background:${m.cor};"></span>${mr}</span>`).join('');
   }
 
-  // Update mapa filter selects
   const mapColabSel = document.getElementById('mapa-colab-filter');
   if (mapColabSel) {
     const cur = mapColabSel.value;
@@ -497,7 +499,7 @@ function switchPage(id) {
 }
 
 // ══════════════════════════════════════════════════════════
-// IMPORT (seed via UI)
+// IMPORT SEED (data_seed.json legado)
 // ══════════════════════════════════════════════════════════
 async function importarSeed() {
   if (!sb) { showToast('Supabase não configurado', 'error'); return; }
@@ -517,27 +519,356 @@ async function importarSeed() {
 }
 
 // ══════════════════════════════════════════════════════════
+// IMPORTAR CSV / XLSX — MODAL COMPLETO
+// ══════════════════════════════════════════════════════════
+
+// Mapeamento inteligente: nome da coluna no arquivo → campo no banco
+const COLUMN_MAP = {
+  // CNPJ
+  'cnpj': 'cnpj',
+  // Razão Social
+  'razao social': 'razao_social', 'razão social': 'razao_social',
+  'razao_social': 'razao_social', 'nome': 'razao_social', 'empresa': 'razao_social',
+  // Bairro
+  'bairro': 'bairro', 'distrito': 'bairro',
+  // CEP
+  'cep': 'cep',
+  // Zona
+  'zona': 'zona',
+  // Micro Região
+  'micro regiao': 'micro_regiao', 'micro_regiao': 'micro_regiao',
+  'micro região': 'micro_regiao', 'mr': 'micro_regiao', 'regiao': 'micro_regiao',
+  'região': 'micro_regiao',
+  // Micro Região Nome
+  'micro regiao nome': 'micro_regiao_nome', 'micro_regiao_nome': 'micro_regiao_nome',
+  'nome micro regiao': 'micro_regiao_nome',
+  // Porte
+  'porte': 'porte', 'classificacao': 'porte', 'classificação': 'porte',
+  // Contratos Geral
+  'contratos geral': 'contratos_geral', 'contratos_geral': 'contratos_geral',
+  'contratos': 'contratos_geral', 'qtd contratos': 'contratos_geral',
+  'quantidade contratos': 'contratos_geral',
+  // Volume Geral
+  'volume geral': 'volume_geral', 'volume_geral': 'volume_geral',
+  'volume': 'volume_geral', 'valor': 'volume_geral', 'valor total': 'volume_geral',
+  // Contratos Carbank
+  'contratos carbank': 'contratos_carbank', 'contratos_carbank': 'contratos_carbank',
+  // Volume Carbank
+  'volume carbank': 'volume_carbank', 'volume_carbank': 'volume_carbank',
+  // Status
+  'status': 'status',
+  // Colaboradora
+  'colaboradora': 'colaboradora', 'consultor': 'colaboradora',
+  'consultora': 'colaboradora', 'responsavel': 'colaboradora',
+  'responsável': 'colaboradora', 'vendedor': 'colaboradora',
+  // Ativo
+  'ativo': 'ativo', 'ativa': 'ativo', 'ativo?': 'ativo',
+  // Endereço (extra — mapeia para bairro se bairro vazio)
+  'endereco': 'bairro', 'endereço': 'bairro', 'logradouro': 'bairro',
+};
+
+let importPreviewData = [];
+let importParsedRows = [];
+
+function abrirImportModal() {
+  document.getElementById('import-modal').classList.remove('hidden');
+  resetImportModal();
+}
+
+function fecharImportModal() {
+  document.getElementById('import-modal').classList.add('hidden');
+  resetImportModal();
+}
+
+function resetImportModal() {
+  importPreviewData = [];
+  importParsedRows = [];
+  document.getElementById('import-drop-zone').classList.remove('drag-over', 'hidden');
+  document.getElementById('import-file-input').value = '';
+  document.getElementById('import-preview-section').classList.add('hidden');
+  document.getElementById('import-progress-section').classList.add('hidden');
+  document.getElementById('import-btn-confirmar').classList.add('hidden');
+  document.getElementById('import-status-msg').textContent = '';
+  document.getElementById('import-file-name').textContent = '';
+}
+
+// ── Drag & Drop ──
+function setupImportDrop() {
+  const zone = document.getElementById('import-drop-zone');
+
+  zone.addEventListener('dragover', e => {
+    e.preventDefault();
+    zone.classList.add('drag-over');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) processImportFile(file);
+  });
+  zone.addEventListener('click', () => document.getElementById('import-file-input').click());
+
+  document.getElementById('import-file-input').addEventListener('change', e => {
+    if (e.target.files[0]) processImportFile(e.target.files[0]);
+  });
+}
+
+// ── Processar arquivo ──
+async function processImportFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  document.getElementById('import-file-name').textContent = `📄 ${file.name}`;
+
+  if (ext === 'csv') {
+    const text = await readFileAsText(file);
+    parseCSV(text);
+  } else if (ext === 'xlsx' || ext === 'xls') {
+    await parseXLSX(file);
+  } else {
+    showImportError('Formato não suportado. Use CSV ou XLSX.');
+    return;
+  }
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+
+function readFileAsArrayBuffer(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ── Parser CSV ──
+function parseCSV(text) {
+  // Detectar separador (vírgula, ponto-e-vírgula ou tab)
+  const firstLine = text.split('\n')[0];
+  let sep = ',';
+  if ((firstLine.match(/;/g)||[]).length > (firstLine.match(/,/g)||[]).length) sep = ';';
+  else if ((firstLine.match(/\t/g)||[]).length > (firstLine.match(/,/g)||[]).length) sep = '\t';
+
+  const lines = text.split('\n').filter(l => l.trim());
+  if (lines.length < 2) { showImportError('Arquivo CSV vazio ou inválido.'); return; }
+
+  const headers = parseCsvLine(lines[0], sep).map(h => h.trim().replace(/^"|"$/g,''));
+  const rows = lines.slice(1).map(line => {
+    const values = parseCsvLine(line, sep);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = (values[i]||'').trim().replace(/^"|"$/g,''); });
+    return obj;
+  }).filter(row => Object.values(row).some(v => v));
+
+  processRawRows(headers, rows);
+}
+
+function parseCsvLine(line, sep) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === sep && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+// ── Parser XLSX (usa SheetJS via CDN) ──
+async function parseXLSX(file) {
+  if (!window.XLSX) {
+    showImportError('Carregando biblioteca XLSX...');
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+  }
+  try {
+    const buf = await readFileAsArrayBuffer(file);
+    const wb = XLSX.read(buf, { type:'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+    if (raw.length < 2) { showImportError('Planilha vazia ou sem dados.'); return; }
+
+    const headers = raw[0].map(h => String(h).trim());
+    const rows = raw.slice(1).map(row => {
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = String(row[i]||'').trim(); });
+      return obj;
+    }).filter(row => Object.values(row).some(v => v));
+
+    processRawRows(headers, rows);
+  } catch(e) {
+    showImportError('Erro ao ler XLSX: ' + e.message);
+  }
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+// ── Mapear colunas e gerar preview ──
+function processRawRows(headers, rows) {
+  // Mapear cada header para campo do banco
+  const fieldMap = {}; // header original → campo banco
+  const unmapped = [];
+
+  headers.forEach(h => {
+    const key = h.toLowerCase().trim()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove acentos para comparação
+      .replace(/[^a-z0-9 _]/g, '');
+    const mapped = COLUMN_MAP[key] || COLUMN_MAP[h.toLowerCase().trim()];
+    if (mapped) fieldMap[h] = mapped;
+    else unmapped.push(h);
+  });
+
+  // Converter rows para formato do banco
+  importParsedRows = rows.map(row => {
+    const obj = { ativo: true };
+    Object.entries(fieldMap).forEach(([orig, field]) => {
+      let val = row[orig];
+      if (field === 'contratos_geral' || field === 'contratos_carbank') {
+        val = parseInt(String(val).replace(/\D/g,'')) || 0;
+      } else if (field === 'volume_geral' || field === 'volume_carbank') {
+        val = parseFloat(String(val).replace(/[^\d,.-]/g,'').replace(',','.')) || 0;
+      } else if (field === 'ativo') {
+        val = !['false','0','inativo','não','nao','n'].includes(String(val).toLowerCase());
+      }
+      if (val !== '' && val !== undefined) obj[field] = val;
+    });
+    return obj;
+  }).filter(r => r.cnpj); // só linhas com CNPJ
+
+  if (importParsedRows.length === 0) {
+    showImportError('Nenhuma linha válida encontrada. Verifique se a planilha possui coluna CNPJ.');
+    return;
+  }
+
+  showImportPreview(headers, fieldMap, unmapped, rows);
+}
+
+// ── Exibir preview ──
+function showImportPreview(headers, fieldMap, unmapped, rawRows) {
+  const section = document.getElementById('import-preview-section');
+  section.classList.remove('hidden');
+  document.getElementById('import-drop-zone').classList.add('hidden');
+
+  // Stats
+  document.getElementById('import-stat-total').textContent  = importParsedRows.length;
+  document.getElementById('import-stat-mapped').textContent = Object.keys(fieldMap).length;
+  document.getElementById('import-stat-skip').textContent   = unmapped.length;
+
+  // Colunas mapeadas
+  const mapList = document.getElementById('import-col-map');
+  mapList.innerHTML = Object.entries(fieldMap).map(([orig, field]) =>
+    `<div class="import-col-row">
+      <span class="import-col-orig">${orig}</span>
+      <span class="import-col-arrow">→</span>
+      <span class="import-col-dest">${field}</span>
+    </div>`
+  ).join('') + (unmapped.length > 0 ? unmapped.map(u =>
+    `<div class="import-col-row">
+      <span class="import-col-orig">${u}</span>
+      <span class="import-col-arrow">→</span>
+      <span class="import-col-skip">ignorado</span>
+    </div>`
+  ).join('') : '');
+
+  // Preview tabela (primeiras 5 linhas)
+  const preview5 = importParsedRows.slice(0, 5);
+  const previewFields = ['cnpj','razao_social','bairro','zona','micro_regiao','contratos_geral','volume_geral'];
+  const previewThead = document.getElementById('import-preview-thead');
+  const previewTbody = document.getElementById('import-preview-tbody');
+
+  previewThead.innerHTML = '<tr>' + previewFields.map(f=>`<th>${f}</th>`).join('') + '</tr>';
+  previewTbody.innerHTML = preview5.map(r =>
+    '<tr>' + previewFields.map(f=>`<td>${r[f]??''}</td>`).join('') + '</tr>'
+  ).join('');
+
+  document.getElementById('import-btn-confirmar').classList.remove('hidden');
+  document.getElementById('import-status-msg').textContent = '';
+}
+
+// ── Executar importação ──
+async function executarImport() {
+  if (!sb) { showImportError('Supabase não configurado.'); return; }
+  if (!importParsedRows.length) return;
+
+  document.getElementById('import-btn-confirmar').classList.add('hidden');
+  document.getElementById('import-preview-section').classList.add('hidden');
+  document.getElementById('import-progress-section').classList.remove('hidden');
+
+  const total = importParsedRows.length;
+  const BATCH = 50;
+  let done = 0;
+  let erros = 0;
+
+  for (let i = 0; i < total; i += BATCH) {
+    const batch = importParsedRows.slice(i, i + BATCH);
+    const { error } = await sb.from('lojas').upsert(batch, { onConflict: 'cnpj' });
+    if (error) {
+      erros++;
+      console.error('Batch error:', error);
+    }
+    done = Math.min(i + BATCH, total);
+
+    const pct = Math.round(done / total * 100);
+    document.getElementById('import-progress-bar').style.width = pct + '%';
+    document.getElementById('import-progress-label').textContent = `${done} / ${total} registros...`;
+  }
+
+  if (erros === 0) {
+    document.getElementById('import-progress-label').textContent = `✓ ${total} registros importados com sucesso!`;
+    document.getElementById('import-progress-bar').style.background = 'var(--verde)';
+    showToast(`${total} lojas importadas ✓`, 'success');
+  } else {
+    document.getElementById('import-progress-label').textContent = `Concluído com ${erros} erros. Verifique o console.`;
+  }
+
+  setTimeout(async () => {
+    fecharImportModal();
+    await loadLojas();
+  }, 1800);
+}
+
+function showImportError(msg) {
+  document.getElementById('import-status-msg').textContent = '⚠ ' + msg;
+  document.getElementById('import-status-msg').style.color = '#B91C1C';
+}
+
+// ══════════════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════════════
 function porteBadge(porte) {
   if (!porte) return '<span style="color:#aaa;font-size:11px;">—</span>';
   const p = porte.trim().toUpperCase();
   let bg, color, label;
-  if (p.startsWith('F')) {
-    bg = '#1565C0'; color = '#fff'; label = porte; // F. > 30 — azul escuro
-  } else if (p.startsWith('E')) {
-    bg = '#6cd1f0'; color = '#fff'; label = porte; // E. 21-30 — azul claro
-  } else if (p.startsWith('D')) {
-    bg = '#26A69A'; color = '#fff'; label = porte; // D. 11-20 — verde água
-  } else if (p.startsWith('C')) {
-    bg = '#66BB6A'; color = '#fff'; label = porte; // C. 6-10 — verde
-  } else if (p.startsWith('B')) {
-    bg = '#FFA726'; color = '#fff'; label = porte; // B. 2-5 — laranja
-  } else if (p.startsWith('A')) {
-    bg = '#EF5350'; color = '#fff'; label = porte; // A. 1 — vermelho
-  } else {
-    bg = '#E0E0E0'; color = '#555'; label = porte;
-  }
+  if (p.startsWith('F'))      { bg = '#1565C0'; color = '#fff'; label = porte; }
+  else if (p.startsWith('E')) { bg = '#6cd1f0'; color = '#fff'; label = porte; }
+  else if (p.startsWith('D')) { bg = '#26A69A'; color = '#fff'; label = porte; }
+  else if (p.startsWith('C')) { bg = '#66BB6A'; color = '#fff'; label = porte; }
+  else if (p.startsWith('B')) { bg = '#FFA726'; color = '#fff'; label = porte; }
+  else if (p.startsWith('A')) { bg = '#EF5350'; color = '#fff'; label = porte; }
+  else                         { bg = '#E0E0E0'; color = '#555'; label = porte; }
   return `<span style="display:inline-block;background:${bg};color:${color};font-size:10px;font-weight:600;padding:3px 7px;border-radius:6px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis;" title="${porte}">${label}</span>`;
 }
 
@@ -574,13 +905,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadSeed();
   }
 
-  // Filter events
+  setupImportDrop();
+
   ['f-busca','f-zona','f-mr','f-colab','f-status'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', applyTableFilters);
     document.getElementById(id)?.addEventListener('change', applyTableFilters);
   });
 
-  // Mapa filter events
   ['mapa-mr-filter','mapa-colab-filter'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', refreshMapa);
   });
