@@ -782,14 +782,13 @@ function porteBadge(porte) {
 }
 
 function fmtBRL(n) {
-  if (!n) return 'R$ 0';
-  return 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits:0, maximumFractionDigits:0 });
+  if (!n) return '0';
+  return Number(n).toLocaleString('pt-BR', { minimumFractionDigits:0, maximumFractionDigits:0 });
 }
 
 function fmtK(n) {
-  if (!n) return 'R$ 0';
-  if (n >= 1e6) return 'R$ ' + (n/1e6).toFixed(1) + 'M';
-  return 'R$ ' + (n/1e3).toFixed(0) + 'K';
+  if (!n) return '0';
+  return Number(n).toLocaleString('pt-BR', { minimumFractionDigits:0, maximumFractionDigits:0 });
 }
 
 function showToast(msg, type='') {
