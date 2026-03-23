@@ -9,6 +9,138 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
   <link rel="stylesheet" href="css/styles.css"/>
   <script src="config.js"></script>
+
+  <style>
+    /* ── IMPORT MODAL ── */
+    #import-modal .modal-box {
+      max-width: 680px;
+      width: 95%;
+      max-height: 88vh;
+      overflow-y: auto;
+    }
+
+    .import-drop-zone {
+      border: 2px dashed var(--gray-300, #dee2e6);
+      border-radius: 12px;
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      background: var(--gray-50);
+      margin-bottom: 16px;
+    }
+    .import-drop-zone:hover,
+    .import-drop-zone.drag-over {
+      border-color: var(--verde);
+      background: var(--verde-lt);
+    }
+    .import-drop-icon { font-size: 40px; margin-bottom: 10px; }
+    .import-drop-title { font-size: 15px; font-weight: 600; color: var(--gray-800); margin-bottom: 4px; }
+    .import-drop-sub   { font-size: 12px; color: var(--gray-600); }
+
+    .import-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .import-stat-box {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      padding: 10px 14px;
+      text-align: center;
+    }
+    .import-stat-val   { font-size: 22px; font-weight: 700; color: var(--verde); }
+    .import-stat-label { font-size: 11px; color: var(--gray-600); margin-top: 2px; }
+
+    .import-col-section { margin-bottom: 16px; }
+    .import-col-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--gray-600);
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      margin-bottom: 8px;
+    }
+    .import-col-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+      max-height: 160px;
+      overflow-y: auto;
+      padding: 10px;
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+    }
+    .import-col-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .import-col-orig  { background: var(--gray-200); color: var(--gray-800); padding: 2px 7px; border-radius: 4px; font-weight: 500; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .import-col-arrow { color: var(--gray-400); font-size: 11px; }
+    .import-col-dest  { background: var(--verde-lt); color: var(--verde-dk); padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+    .import-col-skip  { color: var(--gray-400); font-style: italic; font-size: 11px; }
+
+    .import-preview-table-wrap {
+      overflow-x: auto;
+      max-height: 200px;
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .import-preview-table-wrap table {
+      font-size: 11px;
+    }
+    .import-preview-table-wrap thead th {
+      font-size: 10px;
+    }
+
+    .import-progress-wrap {
+      padding: 24px 0;
+    }
+    .import-progress-track {
+      height: 10px;
+      background: var(--gray-200);
+      border-radius: 5px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .import-progress-fill {
+      height: 100%;
+      background: var(--verde);
+      border-radius: 5px;
+      transition: width .3s;
+    }
+    #import-progress-label {
+      font-size: 13px;
+      color: var(--gray-600);
+      text-align: center;
+    }
+    #import-status-msg {
+      font-size: 12px;
+      margin-top: 8px;
+      min-height: 18px;
+    }
+    #import-file-name {
+      font-size: 12px;
+      color: var(--verde-dk);
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    .import-tip {
+      background: var(--azul-lt);
+      border: 1px solid #b5d4f4;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--azul);
+      margin-bottom: 14px;
+    }
+  </style>
 </head>
 <body>
 
@@ -34,7 +166,91 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════ -->
-<!-- NAVBAR -->
+<!-- IMPORT MODAL                                          -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div id="import-modal" class="modal-backdrop hidden">
+  <div class="modal-box" style="max-width:680px;width:95%;max-height:88vh;overflow-y:auto;">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="modal-title" style="margin-bottom:0;">📥 Importar Planilha</div>
+      <button class="btn btn-ghost btn-sm" onclick="fecharImportModal()">✕ Fechar</button>
+    </div>
+
+    <div class="import-tip">
+      <strong>Formatos aceitos:</strong> CSV (separado por vírgula ou ponto-e-vírgula) e XLSX/Excel.<br>
+      A primeira linha deve conter os cabeçalhos. O sistema detecta automaticamente as colunas.
+    </div>
+
+    <!-- Drop Zone -->
+    <div id="import-drop-zone" class="import-drop-zone">
+      <div class="import-drop-icon">📂</div>
+      <div class="import-drop-title">Arraste o arquivo aqui ou clique para selecionar</div>
+      <div class="import-drop-sub">CSV ou XLSX · máx. 10 MB</div>
+    </div>
+    <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls" style="display:none;"/>
+    <div id="import-file-name"></div>
+    <div id="import-status-msg"></div>
+
+    <!-- Preview Section -->
+    <div id="import-preview-section" class="hidden">
+
+      <div class="import-stats">
+        <div class="import-stat-box">
+          <div class="import-stat-val" id="import-stat-total">0</div>
+          <div class="import-stat-label">Registros válidos</div>
+        </div>
+        <div class="import-stat-box">
+          <div class="import-stat-val" id="import-stat-mapped">0</div>
+          <div class="import-stat-label">Colunas mapeadas</div>
+        </div>
+        <div class="import-stat-box">
+          <div class="import-stat-val" style="color:var(--amber)" id="import-stat-skip">0</div>
+          <div class="import-stat-label">Colunas ignoradas</div>
+        </div>
+      </div>
+
+      <div class="import-col-section">
+        <div class="import-col-section-title">Mapeamento de colunas</div>
+        <div class="import-col-list" id="import-col-map"></div>
+      </div>
+
+      <div class="import-col-section">
+        <div class="import-col-section-title">Pré-visualização (primeiras 5 linhas)</div>
+        <div class="import-preview-table-wrap">
+          <table>
+            <thead id="import-preview-thead"></thead>
+            <tbody id="import-preview-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400E;margin-bottom:14px;">
+        <strong>⚠ Registros duplicados</strong> (mesmo CNPJ) serão <strong>atualizados</strong>, não duplicados.
+      </div>
+
+    </div>
+
+    <!-- Progress Section -->
+    <div id="import-progress-section" class="hidden import-progress-wrap">
+      <div class="import-progress-track">
+        <div class="import-progress-fill" id="import-progress-bar" style="width:0%"></div>
+      </div>
+      <div id="import-progress-label">Preparando importação...</div>
+    </div>
+
+    <!-- Actions -->
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="fecharImportModal()">Cancelar</button>
+      <button class="btn btn-primary" id="import-btn-confirmar" class="hidden" onclick="executarImport()" style="display:none;">
+        ✓ Importar agora
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- NAVBAR                                                 -->
 <!-- ══════════════════════════════════════════════════════ -->
 <nav class="navbar">
   <a class="navbar-brand" href="#">
@@ -48,16 +264,16 @@
   </div>
   <div class="navbar-right">
     <span id="badge-total" class="badge-total">— lojas ativas</span>
-    <button class="btn btn-ghost btn-sm" onclick="importarSeed()" title="Importar dados da planilha inicial">↑ Importar dados</button>
+    <button class="btn btn-primary btn-sm" onclick="abrirImportModal()" title="Importar CSV ou XLSX">📥 Importar planilha</button>
+    <button class="btn btn-ghost btn-sm" onclick="importarSeed()" title="Importar data_seed.json">↑ Seed</button>
   </div>
 </nav>
 
 <!-- ══════════════════════════════════════════════════════ -->
-<!-- PAGE: DASHBOARD -->
+<!-- PAGE: DASHBOARD                                        -->
 <!-- ══════════════════════════════════════════════════════ -->
 <div id="page-dashboard" class="page active">
 
-  <!-- Métricas gerais -->
   <div class="metrics-row">
     <div class="metric-card accent-verde">
       <div class="metric-label">Lojas ativas</div>
@@ -81,11 +297,9 @@
     </div>
   </div>
 
-  <!-- MR Cards -->
   <div style="font-size:13px;font-weight:600;color:var(--gray-600);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Micro Regiões</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:24px;" id="mr-cards-dash"></div>
 
-  <!-- Colaboradoras + Comparativo -->
   <div class="grid-2">
     <div class="card">
       <div class="card-header">
@@ -104,7 +318,7 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════ -->
-<!-- PAGE: PLANILHA -->
+<!-- PAGE: PLANILHA                                         -->
 <!-- ══════════════════════════════════════════════════════ -->
 <div id="page-planilha" class="page">
 
@@ -114,12 +328,12 @@
       <span id="save-indicator" style="font-size:12px;font-weight:500;min-width:80px;"></span>
     </div>
     <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary btn-sm" onclick="abrirImportModal()">📥 Importar planilha</button>
       <button class="btn btn-primary btn-sm" onclick="salvarTudo()">💾 Salvar tudo</button>
       <button class="btn btn-ghost btn-sm" onclick="location.reload()">↺ Atualizar</button>
     </div>
   </div>
 
-  <!-- Filtros -->
   <div class="filter-bar" style="margin-bottom:14px;">
     <input type="text" id="f-busca" placeholder="Buscar razão social, bairro..." class="search-input" style="max-width:280px;"/>
     <select id="f-zona" style="max-width:150px;">
@@ -167,17 +381,16 @@
 
   <div id="paginacao" style="display:flex;align-items:center;gap:8px;margin-top:12px;justify-content:center;"></div>
 
-  <!-- Instrução -->
   <div style="margin-top:16px;padding:12px 16px;background:var(--verde-lt);border-radius:8px;font-size:12px;color:var(--verde-dk);border:1px solid #9FE1CB;">
-    <strong>Como usar:</strong> Digite o nome da colaboradora na coluna <em>Colaboradora ✏️</em> — salva automaticamente em 0,8s.
-    Clique em <strong>✕</strong> para desativar uma loja (ela sai do dashboard mas fica no histórico).
-    Use os filtros acima para navegar.
+    <strong>Como usar:</strong> Clique em <strong>📥 Importar planilha</strong> para subir um CSV ou XLSX diretamente.
+    Digite o nome da colaboradora na coluna <em>Colaboradora ✏️</em> — salva automaticamente em 0,8s.
+    Clique em <strong>✕</strong> para desativar uma loja.
   </div>
 
 </div>
 
 <!-- ══════════════════════════════════════════════════════ -->
-<!-- PAGE: MAPA -->
+<!-- PAGE: MAPA                                             -->
 <!-- ══════════════════════════════════════════════════════ -->
 <div id="page-mapa" class="page">
 
@@ -208,6 +421,10 @@
   .leaflet-popup-content-wrapper { border-radius:10px!important; padding:0!important; box-shadow:0 4px 16px rgba(0,0,0,.15)!important; }
   .leaflet-popup-content { margin:12px!important; }
   .leaflet-popup-tip { display:none!important; }
+
+  /* fix: import confirm btn hidden class conflict */
+  #import-btn-confirmar { display: none; }
+  #import-btn-confirmar:not(.hidden) { display: inline-flex; }
 </style>
 
 </body>
