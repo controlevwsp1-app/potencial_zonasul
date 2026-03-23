@@ -659,17 +659,30 @@ function processRawRows(headers, rows) {
     const obj = { ativo: true };
     Object.entries(fieldMap).forEach(([orig, field]) => {
       let val = row[orig];
-      if (field === 'contratos_geral' || field === 'contratos_carbank') {
+      if (field === 'cnpj') {
+        // CNPJ vem como número do Excel (ex: 27750422000130.0) — forçar texto sem decimais
+        val = String(val).trim().replace(/\.0+$/, '').replace(/\D/g, '');
+        if (!val) return;
+        // Garantir 14 dígitos com zeros à esquerda
+        val = val.padStart(14, '0');
+      } else if (field === 'contratos_geral' || field === 'contratos_carbank') {
         val = parseInt(String(val).replace(/\D/g,'')) || 0;
       } else if (field === 'volume_geral' || field === 'volume_carbank') {
         val = parseFloat(String(val).replace(/[^\d,.\-]/g,'').replace(',','.')) || 0;
       } else if (field === 'ativo') {
         val = !['false','0','inativo','não','nao','n'].includes(String(val).toLowerCase());
+      } else if (field === 'cep') {
+        // CEP também vem como número
+        val = String(val).trim().replace(/\.0+$/, '').replace(/\D/g, '').padStart(8, '0');
       }
       if (val !== '' && val !== undefined) obj[field] = val;
     });
     return obj;
-  }).filter(r => r.cnpj);
+  }).filter(r => r.cnpj && r.cnpj.length >= 11); // filtra CNPJs válidos
+
+  console.log('📋 Colunas mapeadas:', fieldMap);
+  console.log('📋 Primeiros 3 parseados:', importParsedRows.slice(0,3));
+  console.log('📋 Total válidos:', importParsedRows.length);
 
   if (!importParsedRows.length) {
     showImportError('Nenhum registro com CNPJ encontrado. Verifique os cabeçalhos.');
