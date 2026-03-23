@@ -2,10 +2,10 @@
 // app.js — CARBANK · Carteira SP
 // ============================================================
 
-window.CARBANK_CONFIG = {
-  supabaseUrl: 'https://yydctmbavkttcvahntco.supabase.co',
-  supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5ZGN0bWJhdmt0dGN2YWhudGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwNTQ5NjcsImV4cCI6MjA4OTYzMDk2N30.BBmlIOvhC8gN01bMcAmfyMqhkqYWRDeG18aYBacM6kM',
-};
+// ── CREDENCIAIS SUPABASE ──
+const SUPA_URL = 'https://yydctmbavkttcvahntco.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5ZGN0bWJhdmt0dGN2YWhudGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwNTQ5NjcsImV4cCI6MjA4OTYzMDk2N30.BBmlIOvhC8gN01bMcAmfyMqhkqYWRDeG18aYBacM6kM';
+
 // ── MR META ──
 const MR_META = {
   'MR-C1': { nome:'Centro · Bela Vista · Higienópolis',              zona:'Centro',     cor:'#BA7517', bg:'#FAEEDA', txt:'#633806', lat:-23.553, lng:-46.645 },
@@ -25,50 +25,47 @@ let filteredLojas = [];
 let mapaInitialized = false;
 let mapInstance = null;
 let mapMarkers = [];
-
-// ── SUPABASE CLIENT ──
 let sb = null;
+
+// ══════════════════════════════════════════════════════════
+// SUPABASE
+// ══════════════════════════════════════════════════════════
 function initSupabase() {
-  if (!SUPA_URL || !SUPA_KEY) {
-    showToast('Configure o Supabase em config.js', 'error');
+  try {
+    sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+    window.SUPABASE_CLIENT = sb;
+    console.log('✅ Supabase inicializado');
+    return true;
+  } catch(e) {
+    console.error('❌ Erro ao inicializar Supabase:', e);
     return false;
   }
-  sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
-  window.SUPABASE_CLIENT = sb;
-  return true;
 }
 
-// ── FETCH DATA ──
 async function loadLojas() {
-  showLoading(true);
+  showLoading(true, 'Carregando dados...');
   try {
-    const { data, error } = await sb.from('lojas').select('*').order('micro_regiao').order('razao_social');
+    const { data, error } = await sb
+      .from('lojas')
+      .select('*')
+      .order('micro_regiao')
+      .order('razao_social');
     if (error) throw error;
     allLojas = data || [];
     filteredLojas = [...allLojas];
+    console.log(`✅ ${allLojas.length} lojas carregadas`);
     renderAll();
   } catch(e) {
-    showToast('Erro ao carregar dados: ' + e.message, 'error');
-    await loadSeed();
+    console.error('❌ Erro ao carregar lojas:', e);
+    showToast('Erro ao carregar: ' + e.message, 'error');
   } finally {
     showLoading(false);
   }
 }
 
-async function loadSeed() {
-  try {
-    const r = await fetch('data_seed.json');
-    const data = await r.json();
-    allLojas = data.map((d,i) => ({...d, id: i+1}));
-    filteredLojas = [...allLojas];
-    renderAll();
-    showToast('Modo offline — configure Supabase em config.js', 'error');
-  } catch(e) {
-    showToast('Erro ao carregar dados locais', 'error');
-  }
-}
-
-// ── RENDER ALL ──
+// ══════════════════════════════════════════════════════════
+// RENDER ALL
+// ══════════════════════════════════════════════════════════
 function renderAll() {
   const active = allLojas.filter(l => l.ativo !== false);
   document.getElementById('badge-total').textContent = active.length + ' lojas ativas';
@@ -80,10 +77,10 @@ function renderAll() {
 function populateColabFilter() {
   const sel = document.getElementById('f-colab');
   if (!sel) return;
-  const colabs = [...new Set(allLojas.map(l=>l.colaboradora).filter(Boolean))].sort();
+  const colabs = [...new Set(allLojas.map(l => l.colaboradora).filter(Boolean))].sort();
   const cur = sel.value;
   sel.innerHTML = '<option value="">Todas colaboradoras</option><option value="__sem__">Sem colaboradora</option>' +
-    colabs.map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');
+    colabs.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -91,16 +88,10 @@ function populateColabFilter() {
 // ══════════════════════════════════════════════════════════
 function renderDashboard() {
   const active = allLojas.filter(l => l.ativo !== false);
-  const totalLojas     = active.length;
-  const totalContratos = active.reduce((s,l) => s + (l.contratos_geral||0), 0);
-  const totalVolume    = active.reduce((s,l) => s + (l.volume_geral||0), 0);
-  const totalColabs    = new Set(active.map(l=>l.colaboradora).filter(Boolean)).size;
-
-  document.getElementById('m-lojas').textContent     = totalLojas;
-  document.getElementById('m-contratos').textContent = totalContratos.toLocaleString('pt-BR');
-  document.getElementById('m-volume').textContent    = fmtBRL(totalVolume);
-  document.getElementById('m-colabs').textContent    = totalColabs || '—';
-
+  document.getElementById('m-lojas').textContent     = active.length;
+  document.getElementById('m-contratos').textContent = active.reduce((s,l) => s + (l.contratos_geral||0), 0).toLocaleString('pt-BR');
+  document.getElementById('m-volume').textContent    = fmtBRL(active.reduce((s,l) => s + (l.volume_geral||0), 0));
+  document.getElementById('m-colabs').textContent    = new Set(active.map(l => l.colaboradora).filter(Boolean)).size || '—';
   renderMRCards(active);
   renderColabCards(active);
   renderComparativoMR(active);
@@ -109,14 +100,14 @@ function renderDashboard() {
 function renderMRCards(active) {
   const container = document.getElementById('mr-cards-dash');
   container.innerHTML = '';
-  const maxLojas = Math.max(...Object.keys(MR_META).map(mr => active.filter(l=>l.micro_regiao===mr).length));
+  const maxLojas = Math.max(1, ...Object.keys(MR_META).map(mr => active.filter(l => l.micro_regiao === mr).length));
 
   Object.entries(MR_META).forEach(([mr, meta]) => {
-    const lojas = active.filter(l => l.micro_regiao === mr);
-    const colabs = [...new Set(lojas.map(l=>l.colaboradora).filter(Boolean))];
-    const contratos = lojas.reduce((s,l)=>s+(l.contratos_geral||0),0);
-    const volume = lojas.reduce((s,l)=>s+(l.volume_geral||0),0);
-    const pct = maxLojas > 0 ? Math.round(lojas.length/maxLojas*100) : 0;
+    const lojas    = active.filter(l => l.micro_regiao === mr);
+    const colabs   = [...new Set(lojas.map(l => l.colaboradora).filter(Boolean))];
+    const contratos = lojas.reduce((s,l) => s + (l.contratos_geral||0), 0);
+    const volume   = lojas.reduce((s,l) => s + (l.volume_geral||0), 0);
+    const pct      = Math.round(lojas.length / maxLojas * 100);
 
     container.innerHTML += `
     <div class="card" style="border-top:3px solid ${meta.cor};">
@@ -142,13 +133,14 @@ function renderMRCards(active) {
             <div style="font-size:16px;font-weight:700;color:${meta.cor};">${fmtK(volume)}</div>
           </div>
         </div>
-        ${colabs.length > 0 ? `
-        <div style="border-top:1px solid var(--gray-100);padding-top:8px;">
-          <div style="font-size:10px;color:var(--gray-600);margin-bottom:4px;">COLABORADORAS</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;">
-            ${colabs.map(c=>`<span style="background:${meta.cor}20;color:${meta.cor};font-size:11px;font-weight:500;padding:2px 7px;border-radius:10px;">${c}</span>`).join('')}
-          </div>
-        </div>` : `<div style="border-top:1px solid var(--gray-100);padding-top:8px;font-size:11px;color:var(--gray-400);">Sem colaboradora atribuída</div>`}
+        ${colabs.length > 0
+          ? `<div style="border-top:1px solid var(--gray-100);padding-top:8px;">
+               <div style="font-size:10px;color:var(--gray-600);margin-bottom:4px;">COLABORADORAS</div>
+               <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                 ${colabs.map(c => `<span style="background:${meta.cor}20;color:${meta.cor};font-size:11px;font-weight:500;padding:2px 7px;border-radius:10px;">${c}</span>`).join('')}
+               </div>
+             </div>`
+          : `<div style="border-top:1px solid var(--gray-100);padding-top:8px;font-size:11px;color:var(--gray-400);">Sem colaboradora atribuída</div>`}
       </div>
     </div>`;
   });
@@ -159,13 +151,12 @@ function renderColabCards(active) {
   container.innerHTML = '';
   const colabMap = {};
   active.forEach(l => {
-    const c = l.colaboradora || null;
-    if (!c) return;
-    if (!colabMap[c]) colabMap[c] = { lojas:[], contratos:0, volume:0, mrs:new Set() };
-    colabMap[c].lojas.push(l);
-    colabMap[c].contratos += (l.contratos_geral||0);
-    colabMap[c].volume += (l.volume_geral||0);
-    colabMap[c].mrs.add(l.micro_regiao);
+    if (!l.colaboradora) return;
+    if (!colabMap[l.colaboradora]) colabMap[l.colaboradora] = { lojas:[], contratos:0, volume:0, mrs:new Set() };
+    colabMap[l.colaboradora].lojas.push(l);
+    colabMap[l.colaboradora].contratos += (l.contratos_geral||0);
+    colabMap[l.colaboradora].volume    += (l.volume_geral||0);
+    colabMap[l.colaboradora].mrs.add(l.micro_regiao);
   });
 
   const semColab = active.filter(l => !l.colaboradora).length;
@@ -183,7 +174,7 @@ function renderColabCards(active) {
 
   sorted.forEach(([nome, d], i) => {
     const cor = colors[i % colors.length];
-    const pct = Math.round(d.volume/maxVol*100);
+    const pct = Math.round(d.volume / maxVol * 100);
     container.innerHTML += `
     <div class="colab-row">
       <div class="colab-avatar" style="background:${cor}20;color:${cor};">${nome.charAt(0).toUpperCase()}</div>
@@ -214,7 +205,7 @@ function renderComparativoMR(active) {
   container.innerHTML = '';
   const data = Object.entries(MR_META).map(([mr, meta]) => {
     const lojas = active.filter(l => l.micro_regiao === mr);
-    return { mr, meta, lojas: lojas.length, volume: lojas.reduce((s,l)=>s+(l.volume_geral||0),0) };
+    return { mr, meta, lojas: lojas.length, volume: lojas.reduce((s,l) => s + (l.volume_geral||0), 0) };
   }).sort((a,b) => b.volume - a.volume);
 
   const maxVol = data[0]?.volume || 1;
@@ -226,8 +217,7 @@ function renderComparativoMR(active) {
         <span style="margin-left:6px;font-size:11px;">${d.lojas} lojas</span>
       </div>
       <div class="bar-chart-track">
-        <div class="bar-chart-fill" style="width:${Math.round(d.volume/maxVol*100)}%;background:${d.meta.cor};">
-        </div>
+        <div class="bar-chart-fill" style="width:${Math.round(d.volume/maxVol*100)}%;background:${d.meta.cor};"></div>
       </div>
       <div class="bar-chart-val" style="color:${d.meta.cor};">${fmtK(d.volume)}</div>
     </div>`;
@@ -257,8 +247,8 @@ function applyTableFilters() {
     if (colab === '__sem__' && l.colaboradora) return false;
     if (colab && colab !== '__sem__' && l.colaboradora !== colab) return false;
     if (search) {
-      const haystack = [l.razao_social, l.bairro, l.cnpj, l.colaboradora].join(' ').toLowerCase();
-      if (!haystack.includes(search)) return false;
+      const hay = [l.razao_social, l.bairro, l.cnpj, l.colaboradora].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
     }
     return true;
   });
@@ -270,8 +260,8 @@ function applyTableFilters() {
 
 function renderTable() {
   const tbody = document.getElementById('lojas-tbody');
-  const start = (currentPage-1)*PAGE_SIZE;
-  const pageData = filteredLojas.slice(start, start+PAGE_SIZE);
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const pageData = filteredLojas.slice(start, start + PAGE_SIZE);
 
   tbody.innerHTML = pageData.map(l => {
     const meta = MR_META[l.micro_regiao] || {};
@@ -279,25 +269,28 @@ function renderTable() {
     const inativo = l.ativo === false;
     return `
     <tr class="${inativo ? 'inativo' : ''}" data-id="${l.id}">
-      <td style="font-size:11px;color:var(--gray-400);">${l.cnpj}</td>
-      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${l.razao_social}">${l.razao_social}</td>
-      <td>${l.bairro}</td>
-      <td><span class="badge ${zonaBadge}">${l.zona}</span></td>
-      <td><span class="mr-pill" style="background:${meta.cor||'#888'};">${l.micro_regiao}</span></td>
+      <td style="font-size:11px;color:var(--gray-400);">${l.cnpj||''}</td>
+      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${l.razao_social||''}">${l.razao_social||''}</td>
+      <td>${l.bairro||''}</td>
+      <td><span class="badge ${zonaBadge}">${l.zona||''}</span></td>
+      <td><span class="mr-pill" style="background:${meta.cor||'#888'};">${l.micro_regiao||'—'}</span></td>
       <td>${porteBadge(l.porte)}</td>
-      <td style="text-align:center;font-weight:600;">${l.contratos_geral}</td>
+      <td style="text-align:center;font-weight:600;">${l.contratos_geral||0}</td>
       <td style="text-align:right;">${fmtBRL(l.volume_geral)}</td>
       <td>
-        <input type="text" class="colaboradora-input ${l.colaboradora?'preenchido':''}"
+        <input type="text"
+          class="colaboradora-input ${l.colaboradora ? 'preenchido' : ''}"
           value="${l.colaboradora||''}"
           placeholder="Nome..."
           data-id="${l.id}"
           onchange="scheduleColabSave(this)"
-          oninput="this.classList.toggle('preenchido', this.value.length>0)"
+          oninput="this.classList.toggle('preenchido', this.value.length > 0)"
         />
       </td>
       <td>
-        <button class="btn btn-icon btn-danger btn-sm" onclick="confirmarExclusao(${l.id})" title="${inativo?'Reativar':'Desativar'}">
+        <button class="btn btn-icon btn-danger btn-sm"
+          onclick="confirmarToggle(${l.id})"
+          title="${inativo ? 'Reativar' : 'Desativar'}">
           ${inativo ? '↩' : '✕'}
         </button>
       </td>
@@ -309,17 +302,16 @@ function renderTable() {
 
 function renderPagination() {
   const total = filteredLojas.length;
-  const pages = Math.ceil(total/PAGE_SIZE);
+  const pages = Math.ceil(total / PAGE_SIZE);
   const container = document.getElementById('paginacao');
   if (pages <= 1) { container.innerHTML = ''; return; }
-
   let html = `<span style="font-size:12px;color:var(--gray-600);">Pág. ${currentPage} de ${pages}</span>`;
-  if (currentPage > 1)  html += `<button class="btn btn-ghost btn-sm" onclick="goPage(${currentPage-1})">← Ant.</button>`;
+  if (currentPage > 1)     html += `<button class="btn btn-ghost btn-sm" onclick="goPage(${currentPage-1})">← Ant.</button>`;
   if (currentPage < pages) html += `<button class="btn btn-ghost btn-sm" onclick="goPage(${currentPage+1})">Próx. →</button>`;
   container.innerHTML = html;
 }
 
-function goPage(p) { currentPage = p; renderTable(); window.scrollTo(0,0); }
+function goPage(p) { currentPage = p; renderTable(); window.scrollTo(0, 0); }
 
 // ── SAVE COLABORADORA ──
 function scheduleColabSave(input) {
@@ -327,66 +319,65 @@ function scheduleColabSave(input) {
   pendingSaves[id] = input.value.trim() || null;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushSaves, 800);
-  document.getElementById('save-indicator').textContent = 'Salvando...';
-  document.getElementById('save-indicator').style.color = 'var(--amber)';
+  const ind = document.getElementById('save-indicator');
+  ind.textContent = 'Salvando...';
+  ind.style.color = 'var(--amber)';
 }
 
 async function flushSaves() {
   const entries = Object.entries(pendingSaves);
   pendingSaves = {};
-  if (entries.length === 0) return;
+  if (!entries.length) return;
 
   for (const [id, colaboradora] of entries) {
     const idx = allLojas.findIndex(l => String(l.id) === String(id));
     if (idx >= 0) allLojas[idx].colaboradora = colaboradora;
-
     if (sb) {
       const { error } = await sb.from('lojas').update({ colaboradora }).eq('id', id);
       if (error) { showToast('Erro ao salvar: ' + error.message, 'error'); return; }
     }
   }
 
-  document.getElementById('save-indicator').textContent = '✓ Salvo';
-  document.getElementById('save-indicator').style.color = 'var(--verde)';
-  setTimeout(() => { document.getElementById('save-indicator').textContent = ''; }, 2000);
+  const ind = document.getElementById('save-indicator');
+  ind.textContent = '✓ Salvo';
+  ind.style.color = 'var(--verde)';
+  setTimeout(() => { ind.textContent = ''; }, 2000);
   renderDashboard();
   if (mapaInitialized) refreshMapa();
 }
 
-// ── EXCLUIR / REATIVAR ──
+async function salvarTudo() {
+  await flushSaves();
+  showToast('Tudo salvo ✓', 'success');
+}
+
+// ── ATIVAR / DESATIVAR ──
 let pendingToggleId = null;
-function confirmarExclusao(id) {
+
+function confirmarToggle(id) {
   pendingToggleId = id;
   const loja = allLojas.find(l => l.id === id);
   const acao = loja?.ativo === false ? 'reativar' : 'desativar';
   document.getElementById('modal-msg').textContent = `Deseja ${acao} a loja "${loja?.razao_social}"?`;
-  document.getElementById('modal-confirm-btn').textContent = acao === 'reativar' ? 'Sim, reativar' : 'Sim, desativar';
-  document.getElementById('modal-confirm-btn').className = acao === 'reativar' ? 'btn btn-primary' : 'btn btn-danger';
+  const btn = document.getElementById('modal-confirm-btn');
+  btn.textContent  = acao === 'reativar' ? 'Sim, reativar' : 'Sim, desativar';
+  btn.className    = acao === 'reativar' ? 'btn btn-primary' : 'btn btn-danger';
   document.getElementById('confirm-modal').classList.remove('hidden');
 }
 
 async function executarToggle() {
   document.getElementById('confirm-modal').classList.add('hidden');
-  const id = pendingToggleId;
-  const idx = allLojas.findIndex(l => l.id === id);
+  const idx = allLojas.findIndex(l => l.id === pendingToggleId);
   if (idx < 0) return;
   const novoAtivo = !(allLojas[idx].ativo !== false);
   allLojas[idx].ativo = novoAtivo;
-
   if (sb) {
-    const { error } = await sb.from('lojas').update({ ativo: novoAtivo }).eq('id', id);
+    const { error } = await sb.from('lojas').update({ ativo: novoAtivo }).eq('id', pendingToggleId);
     if (error) { showToast('Erro: ' + error.message, 'error'); return; }
   }
-
   showToast(novoAtivo ? 'Loja reativada ✓' : 'Loja desativada ✓', 'success');
   applyTableFilters();
   renderDashboard();
-}
-
-// ── BULK SAVE ──
-async function salvarTudo() {
-  await flushSaves();
-  showToast('Tudo salvo ✓', 'success');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -395,14 +386,11 @@ async function salvarTudo() {
 function initMapa() {
   if (mapaInitialized) return;
   mapaInitialized = true;
-
   mapInstance = L.map('mapa-container', { zoomControl:true, scrollWheelZoom:true })
     .setView([-23.600, -46.690], 11);
-
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:18
+    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 18
   }).addTo(mapInstance);
-
   refreshMapa();
 }
 
@@ -411,163 +399,123 @@ function refreshMapa() {
   mapMarkers.forEach(m => m.remove());
   mapMarkers = [];
 
-  const active = allLojas.filter(l => l.ativo !== false);
+  const active     = allLojas.filter(l => l.ativo !== false);
+  const allColabs  = [...new Set(active.map(l => l.colaboradora).filter(Boolean))];
+  const palette    = ['#1D9E75','#185FA5','#BA7517','#D85A30','#534AB7','#0F6E56','#0C447C','#B91C1C'];
   const colabColors = {};
-  const allColabs = [...new Set(active.map(l=>l.colaboradora).filter(Boolean))];
-  const palette = ['#1D9E75','#185FA5','#BA7517','#D85A30','#534AB7','#0F6E56','#0C447C','#B91C1C'];
-  allColabs.forEach((c,i) => { colabColors[c] = palette[i % palette.length]; });
+  allColabs.forEach((c, i) => { colabColors[c] = palette[i % palette.length]; });
 
-  const filterMR = document.getElementById('mapa-mr-filter')?.value || '';
+  const filterMR    = document.getElementById('mapa-mr-filter')?.value || '';
   const filterColab = document.getElementById('mapa-colab-filter')?.value || '';
+  const toPlot      = active.filter(l =>
+    (!filterMR || l.micro_regiao === filterMR) &&
+    (!filterColab || l.colaboradora === filterColab)
+  );
 
-  const toPlot = active.filter(l => {
-    if (filterMR && l.micro_regiao !== filterMR) return false;
-    if (filterColab && l.colaboradora !== filterColab) return false;
-    return true;
-  });
-
+  // Círculos de área por MR
   Object.entries(MR_META).forEach(([mr, meta]) => {
     const lojas = toPlot.filter(l => l.micro_regiao === mr);
-    if (lojas.length === 0) return;
-    const radius = 20 + (lojas.length / Math.max(47,1)) * 30;
-
+    if (!lojas.length) return;
+    const radius = 20 + (lojas.length / Math.max(47, 1)) * 30;
     const circle = L.circleMarker([meta.lat, meta.lng], {
       radius, fillColor: meta.cor, color:'#fff', weight:2.5, opacity:1, fillOpacity:0.18
     }).addTo(mapInstance);
     mapMarkers.push(circle);
   });
 
+  // Pontos individuais
   toPlot.forEach(l => {
     const meta = MR_META[l.micro_regiao] || {};
-    const cor = l.colaboradora ? (colabColors[l.colaboradora]||meta.cor) : meta.cor;
-
-    const jLat = meta.lat + (Math.random()-.5)*0.06;
-    const jLng = meta.lng + (Math.random()-.5)*0.07;
+    const cor  = l.colaboradora ? (colabColors[l.colaboradora] || meta.cor) : meta.cor;
+    const jLat = meta.lat + (Math.random() - .5) * 0.06;
+    const jLng = meta.lng + (Math.random() - .5) * 0.07;
 
     const dot = L.circleMarker([jLat, jLng], {
-      radius: 5,
-      fillColor: cor,
-      color: '#fff',
-      weight: 1,
-      opacity: 1,
-      fillOpacity: 0.85
+      radius:5, fillColor:cor, color:'#fff', weight:1, opacity:1, fillOpacity:0.85
     }).addTo(mapInstance);
 
     dot.bindPopup(`
       <div style="font-family:sans-serif;min-width:200px;max-width:260px;">
-        <div style="background:${meta.bg};padding:8px 10px;border-radius:6px 6px 0 0;margin:-12px -12px 8px;">
-          <span style="background:${meta.cor};color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;">${l.micro_regiao}</span>
-          <div style="font-size:11px;font-weight:600;color:${meta.txt};margin-top:4px;line-height:1.3;">${l.razao_social}</div>
+        <div style="background:${meta.bg||'#eee'};padding:8px 10px;border-radius:6px 6px 0 0;margin:-12px -12px 8px;">
+          <span style="background:${meta.cor||'#888'};color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px;">${l.micro_regiao||'—'}</span>
+          <div style="font-size:11px;font-weight:600;color:${meta.txt||'#333'};margin-top:4px;line-height:1.3;">${l.razao_social||''}</div>
         </div>
-        <div style="font-size:12px;color:#555;margin-bottom:4px;">${l.bairro} · ${l.cep}</div>
+        <div style="font-size:12px;color:#555;margin-bottom:4px;">${l.bairro||''} · ${l.cep||''}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;margin-bottom:6px;">
-          <div><span style="color:#888;">Contratos</span><br><strong>${l.contratos_geral}</strong></div>
+          <div><span style="color:#888;">Contratos</span><br><strong>${l.contratos_geral||0}</strong></div>
           <div><span style="color:#888;">Volume</span><br><strong>${fmtBRL(l.volume_geral)}</strong></div>
         </div>
-        ${l.colaboradora ? `<div style="background:${cor}20;color:${cor};font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px;">👤 ${l.colaboradora}</div>` : '<div style="font-size:11px;color:#aaa;">Sem colaboradora</div>'}
+        ${l.colaboradora
+          ? `<div style="background:${cor}20;color:${cor};font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px;">👤 ${l.colaboradora}</div>`
+          : '<div style="font-size:11px;color:#aaa;">Sem colaboradora</div>'}
       </div>`, { offset:[0,-3] });
 
-    dot.on('mouseover', function(){ this.setStyle({radius:7,weight:2}); });
-    dot.on('mouseout',  function(){ this.setStyle({radius:5,weight:1}); });
+    dot.on('mouseover', function(){ this.setStyle({radius:7, weight:2}); });
+    dot.on('mouseout',  function(){ this.setStyle({radius:5, weight:1}); });
     mapMarkers.push(dot);
   });
 
+  // Legenda
   const legEl = document.getElementById('mapa-legend');
   if (legEl) {
     legEl.innerHTML = allColabs.length > 0
       ? allColabs.map(c => `<span style="display:inline-flex;align-items:center;gap:5px;background:${colabColors[c]}18;color:${colabColors[c]};font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;"><span style="width:8px;height:8px;border-radius:50%;background:${colabColors[c]};"></span>${c}</span>`).join('')
-      : Object.entries(MR_META).map(([mr,m])=>`<span style="display:inline-flex;align-items:center;gap:5px;background:${m.bg};color:${m.txt};font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;"><span style="width:8px;height:8px;border-radius:50%;background:${m.cor};"></span>${mr}</span>`).join('');
+      : Object.entries(MR_META).map(([mr,m]) => `<span style="display:inline-flex;align-items:center;gap:5px;background:${m.bg};color:${m.txt};font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;"><span style="width:8px;height:8px;border-radius:50%;background:${m.cor};"></span>${mr}</span>`).join('');
   }
 
+  // Atualiza select de colaboradoras no mapa
   const mapColabSel = document.getElementById('mapa-colab-filter');
   if (mapColabSel) {
     const cur = mapColabSel.value;
     mapColabSel.innerHTML = '<option value="">Todas colaboradoras</option>' +
-      allColabs.map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');
+      allColabs.map(c => `<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');
   }
 }
 
 // ══════════════════════════════════════════════════════════
-// NAV
+// NAVEGAÇÃO
 // ══════════════════════════════════════════════════════════
 function switchPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   document.querySelector(`[data-page="${id}"]`).classList.add('active');
-  if (id === 'mapa') { setTimeout(initMapa, 100); }
+  if (id === 'mapa') setTimeout(initMapa, 100);
 }
 
 // ══════════════════════════════════════════════════════════
-// IMPORT SEED (data_seed.json legado)
+// IMPORTAR PLANILHA (CSV / XLSX)
 // ══════════════════════════════════════════════════════════
-async function importarSeed() {
-  if (!sb) { showToast('Supabase não configurado', 'error'); return; }
-  showLoading(true, 'Importando dados...');
-  try {
-    const r = await fetch('data_seed.json');
-    const data = await r.json();
-    const { error } = await sb.from('lojas').upsert(data, { onConflict: 'cnpj' });
-    if (error) throw error;
-    showToast(`${data.length} lojas importadas ✓`, 'success');
-    await loadLojas();
-  } catch(e) {
-    showToast('Erro na importação: ' + e.message, 'error');
-  } finally {
-    showLoading(false);
-  }
-}
-
-// ══════════════════════════════════════════════════════════
-// IMPORTAR CSV / XLSX — MODAL COMPLETO
-// ══════════════════════════════════════════════════════════
-
-// Mapeamento inteligente: nome da coluna no arquivo → campo no banco
 const COLUMN_MAP = {
-  // CNPJ
   'cnpj': 'cnpj',
-  // Razão Social
-  'razao social': 'razao_social', 'razão social': 'razao_social',
-  'razao_social': 'razao_social', 'nome': 'razao_social', 'empresa': 'razao_social',
-  // Bairro
+  'razao social': 'razao_social', 'razão social': 'razao_social', 'razao_social': 'razao_social',
+  'nome': 'razao_social', 'empresa': 'razao_social',
   'bairro': 'bairro', 'distrito': 'bairro',
-  // CEP
   'cep': 'cep',
-  // Zona
   'zona': 'zona',
-  // Micro Região
-  'micro regiao': 'micro_regiao', 'micro_regiao': 'micro_regiao',
-  'micro região': 'micro_regiao', 'mr': 'micro_regiao', 'regiao': 'micro_regiao',
-  'região': 'micro_regiao',
-  // Micro Região Nome
-  'micro regiao nome': 'micro_regiao_nome', 'micro_regiao_nome': 'micro_regiao_nome',
-  'nome micro regiao': 'micro_regiao_nome',
-  // Porte
-  'porte': 'porte', 'classificacao': 'porte', 'classificação': 'porte',
-  // Contratos Geral
-  'contratos geral': 'contratos_geral', 'contratos_geral': 'contratos_geral',
-  'contratos': 'contratos_geral', 'qtd contratos': 'contratos_geral',
-  'quantidade contratos': 'contratos_geral',
-  // Volume Geral
-  'volume geral': 'volume_geral', 'volume_geral': 'volume_geral',
-  'volume': 'volume_geral', 'valor': 'volume_geral', 'valor total': 'volume_geral',
-  // Contratos Carbank
-  'contratos carbank': 'contratos_carbank', 'contratos_carbank': 'contratos_carbank',
-  // Volume Carbank
-  'volume carbank': 'volume_carbank', 'volume_carbank': 'volume_carbank',
-  // Status
+  'micro regiao': 'micro_regiao', 'micro região': 'micro_regiao', 'micro_regiao': 'micro_regiao',
+  'mr': 'micro_regiao',
+  'porte': 'porte', 'porte da loja': 'porte', 'classificacao': 'porte', 'classificação': 'porte',
+  'contratos geral': 'contratos_geral', 'contratos - geral': 'contratos_geral',
+  'contratos_geral': 'contratos_geral', 'contratos': 'contratos_geral',
+  'volume geral': 'volume_geral', 'volume - geral': 'volume_geral',
+  'volume_geral': 'volume_geral', 'volume': 'volume_geral',
+  'contratos carbank': 'contratos_carbank', 'contratos perfil carbank': 'contratos_carbank',
+  'contratos_carbank': 'contratos_carbank',
+  'volume carbank': 'volume_carbank', 'volume perfil carbank': 'volume_carbank',
+  'volume_carbank': 'volume_carbank',
   'status': 'status',
-  // Colaboradora
-  'colaboradora': 'colaboradora', 'consultor': 'colaboradora',
-  'consultora': 'colaboradora', 'responsavel': 'colaboradora',
-  'responsável': 'colaboradora', 'vendedor': 'colaboradora',
-  // Ativo
-  'ativo': 'ativo', 'ativa': 'ativo', 'ativo?': 'ativo',
-  // Endereço (extra — mapeia para bairro se bairro vazio)
-  'endereco': 'bairro', 'endereço': 'bairro', 'logradouro': 'bairro',
+  'cnae': 'cnae',
+  'endereco': 'endereco', 'endereço': 'endereco',
+  'numero': 'numero', 'nº': 'numero', 'n°': 'numero',
+  'cidade': 'cidade',
+  'uf': 'uf',
+  'filial': 'filial',
+  'colaboradora': 'colaboradora', 'consultora': 'colaboradora',
+  'consultor': 'colaboradora', 'responsavel': 'colaboradora', 'responsável': 'colaboradora',
+  'ativo': 'ativo',
 };
 
-let importPreviewData = [];
 let importParsedRows = [];
 
 function abrirImportModal() {
@@ -581,25 +529,19 @@ function fecharImportModal() {
 }
 
 function resetImportModal() {
-  importPreviewData = [];
   importParsedRows = [];
-  document.getElementById('import-drop-zone').classList.remove('drag-over', 'hidden');
+  document.getElementById('import-drop-zone').classList.remove('hidden', 'drag-over');
   document.getElementById('import-file-input').value = '';
   document.getElementById('import-preview-section').classList.add('hidden');
   document.getElementById('import-progress-section').classList.add('hidden');
-  document.getElementById('import-btn-confirmar').classList.add('hidden');
+  document.getElementById('import-btn-confirmar').style.display = 'none';
   document.getElementById('import-status-msg').textContent = '';
   document.getElementById('import-file-name').textContent = '';
 }
 
-// ── Drag & Drop ──
 function setupImportDrop() {
   const zone = document.getElementById('import-drop-zone');
-
-  zone.addEventListener('dragover', e => {
-    e.preventDefault();
-    zone.classList.add('drag-over');
-  });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => {
     e.preventDefault();
@@ -608,98 +550,82 @@ function setupImportDrop() {
     if (file) processImportFile(file);
   });
   zone.addEventListener('click', () => document.getElementById('import-file-input').click());
-
   document.getElementById('import-file-input').addEventListener('change', e => {
     if (e.target.files[0]) processImportFile(e.target.files[0]);
   });
 }
 
-// ── Processar arquivo ──
 async function processImportFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   document.getElementById('import-file-name').textContent = `📄 ${file.name}`;
+  document.getElementById('import-status-msg').textContent = '';
 
   if (ext === 'csv') {
-    const text = await readFileAsText(file);
+    const text = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.onerror = rej;
+      r.readAsText(file, 'UTF-8');
+    });
     parseCSV(text);
-  } else if (ext === 'xlsx' || ext === 'xls') {
+  } else if (['xlsx','xls','xlsm'].includes(ext)) {
     await parseXLSX(file);
   } else {
-    showImportError('Formato não suportado. Use CSV ou XLSX.');
-    return;
+    showImportError('Formato não suportado. Use CSV, XLSX ou XLSM.');
   }
 }
 
-function readFileAsText(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
-    reader.onerror = reject;
-    reader.readAsText(file, 'UTF-8');
-  });
-}
-
-function readFileAsArrayBuffer(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = e => resolve(e.target.result);
-    reader.onerror = reject;
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-// ── Parser CSV ──
 function parseCSV(text) {
-  // Detectar separador (vírgula, ponto-e-vírgula ou tab)
   const firstLine = text.split('\n')[0];
   let sep = ',';
   if ((firstLine.match(/;/g)||[]).length > (firstLine.match(/,/g)||[]).length) sep = ';';
   else if ((firstLine.match(/\t/g)||[]).length > (firstLine.match(/,/g)||[]).length) sep = '\t';
 
   const lines = text.split('\n').filter(l => l.trim());
-  if (lines.length < 2) { showImportError('Arquivo CSV vazio ou inválido.'); return; }
+  if (lines.length < 2) { showImportError('CSV vazio ou inválido.'); return; }
 
-  const headers = parseCsvLine(lines[0], sep).map(h => h.trim().replace(/^"|"$/g,''));
+  const headers = splitCsvLine(lines[0], sep).map(h => h.trim().replace(/^"|"$/g,''));
   const rows = lines.slice(1).map(line => {
-    const values = parseCsvLine(line, sep);
+    const vals = splitCsvLine(line, sep);
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = (values[i]||'').trim().replace(/^"|"$/g,''); });
+    headers.forEach((h, i) => { obj[h] = (vals[i]||'').trim().replace(/^"|"$/g,''); });
     return obj;
-  }).filter(row => Object.values(row).some(v => v));
+  }).filter(r => Object.values(r).some(v => v));
 
   processRawRows(headers, rows);
 }
 
-function parseCsvLine(line, sep) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
+function splitCsvLine(line, sep) {
+  const result = []; let cur = ''; let inQ = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
-      else inQuotes = !inQuotes;
-    } else if (ch === sep && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
+    if (ch === '"') { if (inQ && line[i+1]==='"') { cur+='"'; i++; } else inQ=!inQ; }
+    else if (ch === sep && !inQ) { result.push(cur); cur=''; }
+    else cur += ch;
   }
-  result.push(current);
+  result.push(cur);
   return result;
 }
 
-// ── Parser XLSX (usa SheetJS via CDN) ──
 async function parseXLSX(file) {
   if (!window.XLSX) {
-    showImportError('Carregando biblioteca XLSX...');
-    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+    document.getElementById('import-status-msg').textContent = '⏳ Carregando biblioteca...';
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
   }
   try {
-    const buf = await readFileAsArrayBuffer(file);
-    const wb = XLSX.read(buf, { type:'array' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+    const buf = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.onerror = rej;
+      r.readAsArrayBuffer(file);
+    });
+    const wb  = XLSX.read(buf, { type:'array' });
+    const ws  = wb.Sheets[wb.SheetNames[0]];
     const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
     if (raw.length < 2) { showImportError('Planilha vazia ou sem dados.'); return; }
 
@@ -708,40 +634,27 @@ async function parseXLSX(file) {
       const obj = {};
       headers.forEach((h, i) => { obj[h] = String(row[i]||'').trim(); });
       return obj;
-    }).filter(row => Object.values(row).some(v => v));
+    }).filter(r => Object.values(r).some(v => v));
 
     processRawRows(headers, rows);
   } catch(e) {
-    showImportError('Erro ao ler XLSX: ' + e.message);
+    showImportError('Erro ao ler arquivo: ' + e.message);
   }
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
-
-// ── Mapear colunas e gerar preview ──
 function processRawRows(headers, rows) {
-  // Mapear cada header para campo do banco
-  const fieldMap = {}; // header original → campo banco
+  const fieldMap = {};
   const unmapped = [];
 
   headers.forEach(h => {
     const key = h.toLowerCase().trim()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove acentos para comparação
-      .replace(/[^a-z0-9 _]/g, '');
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9 _\-º°]/g, '').trim();
     const mapped = COLUMN_MAP[key] || COLUMN_MAP[h.toLowerCase().trim()];
     if (mapped) fieldMap[h] = mapped;
     else unmapped.push(h);
   });
 
-  // Converter rows para formato do banco
   importParsedRows = rows.map(row => {
     const obj = { ativo: true };
     Object.entries(fieldMap).forEach(([orig, field]) => {
@@ -749,99 +662,86 @@ function processRawRows(headers, rows) {
       if (field === 'contratos_geral' || field === 'contratos_carbank') {
         val = parseInt(String(val).replace(/\D/g,'')) || 0;
       } else if (field === 'volume_geral' || field === 'volume_carbank') {
-        val = parseFloat(String(val).replace(/[^\d,.-]/g,'').replace(',','.')) || 0;
+        val = parseFloat(String(val).replace(/[^\d,.\-]/g,'').replace(',','.')) || 0;
       } else if (field === 'ativo') {
         val = !['false','0','inativo','não','nao','n'].includes(String(val).toLowerCase());
       }
       if (val !== '' && val !== undefined) obj[field] = val;
     });
     return obj;
-  }).filter(r => r.cnpj); // só linhas com CNPJ
+  }).filter(r => r.cnpj);
 
-  if (importParsedRows.length === 0) {
-    showImportError('Nenhuma linha válida encontrada. Verifique se a planilha possui coluna CNPJ.');
+  if (!importParsedRows.length) {
+    showImportError('Nenhum registro com CNPJ encontrado. Verifique os cabeçalhos.');
     return;
   }
 
-  showImportPreview(headers, fieldMap, unmapped, rows);
+  showImportPreview(fieldMap, unmapped);
 }
 
-// ── Exibir preview ──
-function showImportPreview(headers, fieldMap, unmapped, rawRows) {
-  const section = document.getElementById('import-preview-section');
-  section.classList.remove('hidden');
+function showImportPreview(fieldMap, unmapped) {
   document.getElementById('import-drop-zone').classList.add('hidden');
+  document.getElementById('import-preview-section').classList.remove('hidden');
 
-  // Stats
   document.getElementById('import-stat-total').textContent  = importParsedRows.length;
   document.getElementById('import-stat-mapped').textContent = Object.keys(fieldMap).length;
   document.getElementById('import-stat-skip').textContent   = unmapped.length;
 
-  // Colunas mapeadas
-  const mapList = document.getElementById('import-col-map');
-  mapList.innerHTML = Object.entries(fieldMap).map(([orig, field]) =>
-    `<div class="import-col-row">
-      <span class="import-col-orig">${orig}</span>
-      <span class="import-col-arrow">→</span>
-      <span class="import-col-dest">${field}</span>
-    </div>`
-  ).join('') + (unmapped.length > 0 ? unmapped.map(u =>
-    `<div class="import-col-row">
-      <span class="import-col-orig">${u}</span>
-      <span class="import-col-arrow">→</span>
-      <span class="import-col-skip">ignorado</span>
-    </div>`
-  ).join('') : '');
+  document.getElementById('import-col-map').innerHTML =
+    Object.entries(fieldMap).map(([o,f]) => `
+      <div class="import-col-row">
+        <span class="import-col-orig">${o}</span>
+        <span class="import-col-arrow">→</span>
+        <span class="import-col-dest">${f}</span>
+      </div>`).join('') +
+    unmapped.map(u => `
+      <div class="import-col-row">
+        <span class="import-col-orig">${u}</span>
+        <span class="import-col-arrow">→</span>
+        <span class="import-col-skip">ignorado</span>
+      </div>`).join('');
 
-  // Preview tabela (primeiras 5 linhas)
-  const preview5 = importParsedRows.slice(0, 5);
-  const previewFields = ['cnpj','razao_social','bairro','zona','micro_regiao','contratos_geral','volume_geral'];
-  const previewThead = document.getElementById('import-preview-thead');
-  const previewTbody = document.getElementById('import-preview-tbody');
+  const fields = ['cnpj','razao_social','bairro','zona','micro_regiao','contratos_geral','volume_geral'];
+  document.getElementById('import-preview-thead').innerHTML =
+    '<tr>' + fields.map(f => `<th>${f}</th>`).join('') + '</tr>';
+  document.getElementById('import-preview-tbody').innerHTML =
+    importParsedRows.slice(0,5).map(r =>
+      '<tr>' + fields.map(f => `<td>${r[f]??''}</td>`).join('') + '</tr>'
+    ).join('');
 
-  previewThead.innerHTML = '<tr>' + previewFields.map(f=>`<th>${f}</th>`).join('') + '</tr>';
-  previewTbody.innerHTML = preview5.map(r =>
-    '<tr>' + previewFields.map(f=>`<td>${r[f]??''}</td>`).join('') + '</tr>'
-  ).join('');
-
-  document.getElementById('import-btn-confirmar').classList.remove('hidden');
+  document.getElementById('import-btn-confirmar').style.display = 'inline-flex';
   document.getElementById('import-status-msg').textContent = '';
 }
 
-// ── Executar importação ──
 async function executarImport() {
   if (!sb) { showImportError('Supabase não configurado.'); return; }
   if (!importParsedRows.length) return;
 
-  document.getElementById('import-btn-confirmar').classList.add('hidden');
+  document.getElementById('import-btn-confirmar').style.display = 'none';
   document.getElementById('import-preview-section').classList.add('hidden');
   document.getElementById('import-progress-section').classList.remove('hidden');
 
   const total = importParsedRows.length;
   const BATCH = 50;
-  let done = 0;
   let erros = 0;
 
   for (let i = 0; i < total; i += BATCH) {
     const batch = importParsedRows.slice(i, i + BATCH);
     const { error } = await sb.from('lojas').upsert(batch, { onConflict: 'cnpj' });
-    if (error) {
-      erros++;
-      console.error('Batch error:', error);
-    }
-    done = Math.min(i + BATCH, total);
+    if (error) { erros++; console.error('Erro no lote:', error); }
 
-    const pct = Math.round(done / total * 100);
+    const done = Math.min(i + BATCH, total);
+    const pct  = Math.round(done / total * 100);
     document.getElementById('import-progress-bar').style.width = pct + '%';
     document.getElementById('import-progress-label').textContent = `${done} / ${total} registros...`;
   }
 
   if (erros === 0) {
-    document.getElementById('import-progress-label').textContent = `✓ ${total} registros importados com sucesso!`;
+    document.getElementById('import-progress-label').textContent = `✓ ${total} registros importados!`;
     document.getElementById('import-progress-bar').style.background = 'var(--verde)';
     showToast(`${total} lojas importadas ✓`, 'success');
   } else {
-    document.getElementById('import-progress-label').textContent = `Concluído com ${erros} erros. Verifique o console.`;
+    document.getElementById('import-progress-label').textContent = `Concluído com ${erros} erro(s). Veja o console (F12).`;
   }
 
   setTimeout(async () => {
@@ -851,8 +751,9 @@ async function executarImport() {
 }
 
 function showImportError(msg) {
-  document.getElementById('import-status-msg').textContent = '⚠ ' + msg;
-  document.getElementById('import-status-msg').style.color = '#B91C1C';
+  const el = document.getElementById('import-status-msg');
+  el.textContent = '⚠ ' + msg;
+  el.style.color = '#B91C1C';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -861,21 +762,17 @@ function showImportError(msg) {
 function porteBadge(porte) {
   if (!porte) return '<span style="color:#aaa;font-size:11px;">—</span>';
   const p = porte.trim().toUpperCase();
-  let bg, color, label;
-  if (p.startsWith('F'))      { bg = '#1565C0'; color = '#fff'; label = porte; }
-  else if (p.startsWith('E')) { bg = '#6cd1f0'; color = '#fff'; label = porte; }
-  else if (p.startsWith('D')) { bg = '#26A69A'; color = '#fff'; label = porte; }
-  else if (p.startsWith('C')) { bg = '#66BB6A'; color = '#fff'; label = porte; }
-  else if (p.startsWith('B')) { bg = '#FFA726'; color = '#fff'; label = porte; }
-  else if (p.startsWith('A')) { bg = '#EF5350'; color = '#fff'; label = porte; }
-  else                         { bg = '#E0E0E0'; color = '#555'; label = porte; }
-  return `<span style="display:inline-block;background:${bg};color:${color};font-size:10px;font-weight:600;padding:3px 7px;border-radius:6px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis;" title="${porte}">${label}</span>`;
+  const map = { 'F':'#1565C0','E':'#6cd1f0','D':'#26A69A','C':'#66BB6A','B':'#FFA726','A':'#EF5350' };
+  const bg = map[p[0]] || '#E0E0E0';
+  const color = bg === '#E0E0E0' ? '#555' : '#fff';
+  return `<span style="display:inline-block;background:${bg};color:${color};font-size:10px;font-weight:600;padding:3px 7px;border-radius:6px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis;" title="${porte}">${porte}</span>`;
 }
 
 function fmtBRL(n) {
   if (!n) return 'R$ 0';
   return 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits:0, maximumFractionDigits:0 });
 }
+
 function fmtK(n) {
   if (!n) return 'R$ 0';
   if (n >= 1e6) return 'R$ ' + (n/1e6).toFixed(1) + 'M';
@@ -886,7 +783,7 @@ function showToast(msg, type='') {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'toast show ' + type;
-  setTimeout(() => { t.className = 'toast'; }, 3000);
+  setTimeout(() => { t.className = 'toast'; }, 3500);
 }
 
 function showLoading(show, msg='Carregando dados...') {
@@ -899,16 +796,19 @@ function showLoading(show, msg='Carregando dados...') {
 // INIT
 // ══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
-  if (initSupabase()) {
-    await loadLojas();
-  } else {
-    await loadSeed();
+  console.log('🚀 Carbank iniciando...');
+
+  if (!initSupabase()) {
+    showToast('Erro ao conectar ao Supabase', 'error');
+    showLoading(false);
+    return;
   }
 
+  await loadLojas();
   setupImportDrop();
 
   ['f-busca','f-zona','f-mr','f-colab','f-status'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', applyTableFilters);
+    document.getElementById(id)?.addEventListener('input',  applyTableFilters);
     document.getElementById(id)?.addEventListener('change', applyTableFilters);
   });
 
