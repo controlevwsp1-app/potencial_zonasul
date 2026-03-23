@@ -624,17 +624,19 @@ async function parseXLSX(file) {
       r.onerror = rej;
       r.readAsArrayBuffer(file);
     });
-    const wb  = XLSX.read(buf, { type:'array' });
+    // raw:true retorna números brutos do Excel (evita que 2.185.471 vire 2.19)
+    const wb  = XLSX.read(buf, { type:'array', cellText: false });
     const ws  = wb.Sheets[wb.SheetNames[0]];
-    const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+    const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw: true });
     if (raw.length < 2) { showImportError('Planilha vazia ou sem dados.'); return; }
 
     const headers = raw[0].map(h => String(h).trim());
     const rows = raw.slice(1).map(row => {
       const obj = {};
-      headers.forEach((h, i) => { obj[h] = String(row[i]||'').trim(); });
+      // Preservar números como número — não converter para string aqui
+      headers.forEach((h, i) => { obj[h] = (row[i] === null || row[i] === undefined) ? '' : row[i]; });
       return obj;
-    }).filter(r => Object.values(r).some(v => v));
+    }).filter(r => Object.values(r).some(v => v !== ''));
 
     processRawRows(headers, rows);
   } catch(e) {
@@ -660,20 +662,22 @@ function processRawRows(headers, rows) {
     Object.entries(fieldMap).forEach(([orig, field]) => {
       let val = row[orig];
       if (field === 'cnpj') {
-        // CNPJ vem como número do Excel (ex: 27750422000130.0) — forçar texto sem decimais
-        val = String(val).trim().replace(/\.0+$/, '').replace(/\D/g, '');
-        if (!val) return;
-        // Garantir 14 dígitos com zeros à esquerda
-        val = val.padStart(14, '0');
+        // CNPJ vem como número do Excel — forçar texto com 14 dígitos
+        val = String(typeof val === 'number' ? Math.round(val) : val)
+              .trim().replace(/\.0+$/, '').replace(/\D/g, '').padStart(14, '0');
+        if (!val || val === '00000000000000') return;
       } else if (field === 'contratos_geral' || field === 'contratos_carbank') {
-        val = parseInt(String(val).replace(/\D/g,'')) || 0;
+        // Número bruto do Excel — já é number, só garantir inteiro
+        val = typeof val === 'number' ? Math.round(val) : (parseInt(String(val).replace(/\D/g,'')) || 0);
       } else if (field === 'volume_geral' || field === 'volume_carbank') {
-        val = parseFloat(String(val).replace(/[^\d,.\-]/g,'').replace(',','.')) || 0;
+        // Número bruto do Excel — já é float com precisão correta
+        val = typeof val === 'number' ? Math.round(val * 100) / 100
+              : parseFloat(String(val).replace(/[^\d,.\-]/g,'').replace(',','.')) || 0;
       } else if (field === 'ativo') {
         val = !['false','0','inativo','não','nao','n'].includes(String(val).toLowerCase());
       } else if (field === 'cep') {
-        // CEP também vem como número
-        val = String(val).trim().replace(/\.0+$/, '').replace(/\D/g, '').padStart(8, '0');
+        val = String(typeof val === 'number' ? Math.round(val) : val)
+              .trim().replace(/\.0+$/, '').replace(/\D/g, '').padStart(8, '0');
       }
       if (val !== '' && val !== undefined) obj[field] = val;
     });
